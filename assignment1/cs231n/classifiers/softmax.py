@@ -75,7 +75,6 @@ def softmax_loss_vectorized(W, X, y, reg):
   scores = X.dot(W)
   scores -= np.max(scores,axis =1).reshape(-1,1)
   expscores = np.exp(scores)
-  scores[np.arange(num_train),y]
   loss = np.sum(-np.log(expscores[np.arange(num_train),y]/np.sum(expscores,axis = 1)))
   grad = expscores/np.sum(expscores,axis = 1).reshape(-1,1)
   grad[np.arange(num_train),y] -= 1
