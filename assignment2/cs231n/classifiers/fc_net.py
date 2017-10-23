@@ -189,7 +189,6 @@ class FullyConnectedNet(object):
         self.num_layers = 1 + len(hidden_dims)
         self.dtype = dtype
         self.params = {}
-
         ############################################################################
         # TODO: Initialize the parameters of the network, storing all values in    #
         # the self.params dictionary. Store weights and biases for the first layer #
@@ -208,6 +207,11 @@ class FullyConnectedNet(object):
         b = {'b'+str(i+1):np.zeros(dim[i+1])  for i in range(len(dim)-1)}
         self.params.update(W)
         self.params.update(b)
+        if self.use_batchnorm:
+            gamma = {'gamma'+str(i+1):np.ones(dim[i+1])  for i in range(len(dim)-2)}
+            beta = {'beta'+str(i+1):np.zeros(dim[i+1])  for i in range(len(dim)-2)}
+            self.params.update(gamma)
+            self.params.update(beta)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -271,21 +275,24 @@ class FullyConnectedNet(object):
         cache_hidden_layer=[None]*(len(self.dim)-1)
         cache_hidden_layer[0]=0
         for i in range(len(self.dim)-1):
-            w = self.params['W'+str(i+1)]
-            b = self.params['b'+str(i+1)]
-            if i == len(self.dim)-2:
-                scores,scores_cache = affine_forward(hidden[i],w,b)
-                break
-            hidden[i+1], cache_hidden_layer[i+1] = affine_relu_forward(hidden[i],w,b)
+            if self.use_batchnorm:      
+                w = self.params['W'+str(i+1)]
+                b = self.params['b'+str(i+1)]
+                if i == len(self.dim)-2:
+                    scores,scores_cache = affine_forward(hidden[i],w,b)
+                    break                
+                gamma = self.params['gamma'+str(i+1)]
+                beta = self.params['beta'+str(i+1)]
+                hidden[i+1], cache_hidden_layer[i+1] = affine_batchnorm_relu_forward(hidden[i],w,b,gamma,beta,self.bn_params[i])          
+            else:
+                w = self.params['W'+str(i+1)]
+                b = self.params['b'+str(i+1)]
+                if i == len(self.dim)-2:
+                    scores,scores_cache = affine_forward(hidden[i],w,b)
+                    break
+                hidden[i+1], cache_hidden_layer[i+1] = affine_relu_forward(hidden[i],w,b)
 
-        # N = X.shape[0]
-        # W1 = self.params['W1'] 
-        # b1 = self.params['b1'] 
-        # W2 = self.params['W2'] 
-        # b2 = self.params['b2'] 
-        # x = X.reshape(N,-1)
-        # hidden_layer ,cache_hidden_layer = affine_relu_forward(x,W1,b1)
-        # scores,scores_cache = affine_forward(hidden_layer,W2,b2)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -307,7 +314,7 @@ class FullyConnectedNet(object):
         # NOTE: To ensure that your implementation matches ours and you pass the   #
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
-        ############################################################################
+        ###########################################################################
         data_loss, dscores = softmax_loss(scores, y)
         reg_loss = 0
         for w in [self.params[f] for f in self.params.keys() if f[0] == 'W']:
@@ -316,13 +323,23 @@ class FullyConnectedNet(object):
         dx = [None]*(len(self.dim)-1)
         dW = [None]*len(self.dim)
         db = [None]*len(self.dim)
+        dgamma = [None]*(len(self.dim)-1)
+        dbeta = [None]*(len(self.dim)-1)
         dW[0] = 0
         db[0] = 0
+        dgamma[0] = 0
+        dbeta[0] = 0
         for i in range(len(self.dim)-1,0,-1):
-            if i == len(self.dim)-1:
-                dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
+            if self.use_batchnorm:
+                if i == len(self.dim)-1:
+                    dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
+                else:
+                    dx[i-1], dW[i], db[i],dgamma[i],dbeta[i] = affine_batchnorm_relu_backward(dx[i], cache_hidden_layer[i])                
             else:
-                dx[i-1], dW[i], db[i] = affine_relu_backward(dx[i], cache_hidden_layer[i])
+                if i == len(self.dim)-1:
+                    dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
+                else:
+                    dx[i-1], dW[i], db[i] = affine_relu_backward(dx[i], cache_hidden_layer[i])
             
             
             
@@ -332,19 +349,13 @@ class FullyConnectedNet(object):
                 dW[i] += self.reg * w
         dW = {'W'+str(i):dW[i]  for i in range(len(self.dim)-1,0,-1)}
         db = {'b'+str(i):db[i]  for i in range(len(self.dim)-1,0,-1)}
+        dgamma = {'gamma'+str(i):dgamma[i]  for i in range(len(self.dim)-2,0,-1)}
+        dbeta = {'beta'+str(i):dbeta[i]  for i in range(len(self.dim)-2,0,-1)}
         grads.update(dW)
         grads.update(db)
-#         data_loss ,dscores = softmax_loss(scores,y)
-#         reg_loss = 0.5*self.reg*np.sum(W1*W1)+0.5*self.reg*np.sum(W2*W2)
-#         loss = data_loss + reg_loss
-#         dx1, dW2, db2 = affine_backward(dscores, scores_cache)
-#         dW2 += self.reg * W2
-#         dx, dW1, db1 = affine_relu_backward(dx1, cache_hidden_layer)
-#         dW1 += self.reg * W1
-#         grads['W1'] = dW1
-#         grads['W2'] = dW2
-#         grads['b1'] = db1  
-#         grads['b2'] = db2
+        grads.update(dgamma)
+        grads.update(dbeta)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
