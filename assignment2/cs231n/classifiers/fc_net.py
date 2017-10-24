@@ -274,6 +274,9 @@ class FullyConnectedNet(object):
         hidden[0]=x
         cache_hidden_layer=[None]*(len(self.dim)-1)
         cache_hidden_layer[0]=0
+        if self.use_dropout:
+            cache_dropout=[None]*(len(self.dim)-1)
+            cache_dropout[0]=0
         for i in range(len(self.dim)-1):
             if self.use_batchnorm:      
                 w = self.params['W'+str(i+1)]
@@ -291,8 +294,9 @@ class FullyConnectedNet(object):
                     scores,scores_cache = affine_forward(hidden[i],w,b)
                     break
                 hidden[i+1], cache_hidden_layer[i+1] = affine_relu_forward(hidden[i],w,b)
-
-
+            if self.use_dropout:
+                dropout_param = self.dropout_param
+                hidden[i+1], cache_dropout[i+1] = dropout_forward(hidden[i+1], dropout_param)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -330,15 +334,14 @@ class FullyConnectedNet(object):
         dgamma[0] = 0
         dbeta[0] = 0
         for i in range(len(self.dim)-1,0,-1):
+            if i == len(self.dim)-1:
+                dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
+                continue
+            if self.use_dropout:
+                dx[i] = dropout_backward(dx[i], cache_dropout[i])
             if self.use_batchnorm:
-                if i == len(self.dim)-1:
-                    dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
-                else:
-                    dx[i-1], dW[i], db[i],dgamma[i],dbeta[i] = affine_batchnorm_relu_backward(dx[i], cache_hidden_layer[i])                
+                    dx[i-1], dW[i], db[i], dgamma[i], dbeta[i] = affine_batchnorm_relu_backward(dx[i], cache_hidden_layer[i])             
             else:
-                if i == len(self.dim)-1:
-                    dx[i-1], dW[i], db[i] = affine_backward(dscores, scores_cache)
-                else:
                     dx[i-1], dW[i], db[i] = affine_relu_backward(dx[i], cache_hidden_layer[i])
             
             
@@ -349,12 +352,15 @@ class FullyConnectedNet(object):
                 dW[i] += self.reg * w
         dW = {'W'+str(i):dW[i]  for i in range(len(self.dim)-1,0,-1)}
         db = {'b'+str(i):db[i]  for i in range(len(self.dim)-1,0,-1)}
-        dgamma = {'gamma'+str(i):dgamma[i]  for i in range(len(self.dim)-2,0,-1)}
-        dbeta = {'beta'+str(i):dbeta[i]  for i in range(len(self.dim)-2,0,-1)}
         grads.update(dW)
         grads.update(db)
-        grads.update(dgamma)
-        grads.update(dbeta)
+        if self.use_batchnorm:
+            dgamma = {'gamma'+str(i):dgamma[i]  for i in range(len(self.dim)-2,0,-1)}
+            dbeta = {'beta'+str(i):dbeta[i]  for i in range(len(self.dim)-2,0,-1)}
+            grads.update(dgamma)
+            grads.update(dbeta)
+
+
 
         ############################################################################
         #                             END OF YOUR CODE                             #
